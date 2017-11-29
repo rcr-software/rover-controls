@@ -203,7 +203,6 @@ uint8_t read_fifo_burst(ArduCAM myCAM, int filenumber)
       is_header = true;
       myCAM.CS_HIGH();
       //Create a avi file
-      filenumber = filenumber % 1000;//keep number below 8 characters
       itoa(filenumber, str, 10);
       strcat(str, ".jpg");
       //Open the new file

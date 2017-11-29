@@ -307,6 +307,7 @@ void rover_command(int buttNum, boolean pressed) {
         Serial.println("Taking picture");
         DateTime now = rtc.now();
         int k = now.unixtime() - 1510471301;
+        k = k%1000;
         bool success = capture(k); //from ArduCAM
         if (success) {
           Serial.print("Took picture #");
