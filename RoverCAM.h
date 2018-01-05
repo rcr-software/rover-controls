@@ -20,7 +20,6 @@
 //You can see the picture in the SD card.
 // This program requires the ArduCAM V4.0.0 (or later) library and ArduCAM_Mini_5MP_Plus
 // and use Arduino IDE 1.6.8 compiler or above
-
 //#include <Wire.h>
 #include <ArduCAM.h>
 //#include <SPI.h>
@@ -31,8 +30,8 @@
 #error Please sel libect the hardware platform and camera module in the ../libraries/ArduCAM/memorysaver.h file
 #endif
 #define   FRAMES_NUM    0x02
-// set pin 9 as the slave select for the digital pot:
-const int CS = 9;
+// set pin 5 as the slave select for the digital pot:
+const int CS = 5;
 //pin 10 as slave select for SD card
 #define SD_CS 10
 bool is_header = false;
@@ -45,17 +44,16 @@ ArduCAM myCAM(OV5642, CS);
 uint8_t read_fifo_burst(ArduCAM myCAM, int filenumber);
 
 
-
 void setup_rovercam() {
 
   // put your setup code here, to run once:
   uint8_t vid, pid;
   uint8_t temp;
-  #if defined(__SAM3X8E__)
-    Wire1.begin();
-  #else
-    Wire.begin();
-  #endif
+#if defined(__SAM3X8E__)
+  Wire1.begin();
+#else
+  Wire.begin();
+#endif
   Serial.println(F("ArduCAM Start!"));
   // set the CS as an output:
   pinMode(CS, OUTPUT);
@@ -98,11 +96,11 @@ void setup_rovercam() {
   }
 #endif
   //Initialize SD Card
-/*  while (!SD.begin(SD_CS))
-  {
-    Serial.println(F("SD Card Error!")); delay(1000);
-  }
-  Serial.println(F("SD Card detected."));
+  /*  while (!SD.begin(SD_CS))
+    {
+      Serial.println(F("SD Card Error!")); delay(1000);
+    }
+    Serial.println(F("SD Card detected."));
   */
   //Change to JPEG capture mode and initialize the OV5640 module
   myCAM.set_format(JPEG);
@@ -140,6 +138,8 @@ bool capture(int filenumber) {
 }
 uint8_t read_fifo_burst(ArduCAM myCAM, int filenumber)
 {
+  myCAM.OV5642_set_JPEG_size(OV5642_320x240); delay(1000);
+
   uint8_t temp = 0, temp_last = 0;
   uint32_t length = 0;
   static int i = 0;
@@ -222,3 +222,178 @@ uint8_t read_fifo_burst(ArduCAM myCAM, int filenumber)
   myCAM.CS_HIGH();
   return 1;
 }
+
+//helper to print char as two digit hex with trailing space ;)
+void p(char X) {
+  if (X < 16) {
+    Serial.print("0");
+  }
+
+  Serial.print(X, HEX);
+  Serial.print(" ");
+}
+
+//char symbols[] = { '@', '%', '#', 'x', '+', '=', ':', '-', '.', ' ' };
+
+char symbols[] = { '.', ',', ':', ';', 'i', 'r', 's', 'X', 'A', '2', '5', '3', 'h', 'M', 'H', 'G', 'S', '#', '9', 'B', '&', '@'};
+
+
+void p_ascii(char X) {
+  Serial.write(symbols[(int) X / 12]);
+}
+void p_binary(char X) {
+  char buf[9];
+  for (int i = 0; i < 8; i++)
+  {
+
+    if (X & 1)
+      buf[8 - i] = '1';
+    else
+      buf[8 - i] = '0';
+    X >>= 1;
+
+  }
+  Serial.write(buf);
+  Serial.write(' ');
+}
+
+boolean raw_first_time = true;
+
+float fifo_burst_contrast(ArduCAM myCAM, boolean preview)
+{
+  uint8_t resolution = OV5642_640x480;
+  myCAM.flush_fifo();
+  myCAM.clear_fifo_flag();
+  myCAM.OV5642_set_RAW_size(resolution); delay(10);
+
+  unsigned long start =  millis();
+
+  myCAM.start_capture();
+  //delay(50);
+  //while(myCAM.read_fifo()==0 && myCAM.read_fifo()==0) {delay(50);}
+  //delay(50);
+
+  while ( !myCAM.get_bit(ARDUCHIP_TRIG, CAP_DONE_MASK));
+  int line = 480;//640;
+  int column = 640;//480;these were bacwards wtf
+  if (preview)
+  {
+    Serial.print("Startup took: ");
+    Serial.println(millis() - start);
+    start = millis();
+  }
+
+  const int i_n = 16;
+  const int j_n = 16;
+  const int hor_start = 200;
+
+  char VL;
+  int sub_area[i_n * 2][j_n * 2];
+  for (int i = 0; i < i_n * 2; i++)
+  {
+    for (int j = 0; j < column; j++)
+    {
+      VL = myCAM.read_fifo();
+      if (j >= hor_start && j < hor_start + 2 * j_n && i >= 0 && i < 2 * i_n)
+      {
+        sub_area[i - 0][j - hor_start] = VL;
+        if (preview)
+        {
+          Serial.print((int)VL);
+          Serial.print(" ");
+        }
+      }
+    }
+    if (i >= 0 && i < i_n * 2 && preview)
+      Serial.write('\n');
+  }
+  if (preview)
+  {
+    Serial.print("Image readover took: ");
+    Serial.println(millis() - start);
+    start = millis();
+    Serial.println("Downsized image: ");
+  }
+
+  float reduced[i_n][j_n];
+  float avg = 0;
+  for (int i = 0; i < i_n; i++)
+  {
+    for (int j = 0; j <  j_n; j++)
+    {
+      //average downsample by 4
+      reduced[i][j] = float((sub_area[2 * i][2 * j] + sub_area[2 * i + 1][2 * j] + sub_area[2 * i][2 * j + 1] + sub_area[2 * i + 1][2 * j + 1]));
+      avg += reduced[i][j];
+      if (preview)
+      {
+        Serial.print(reduced[i][j]/ (4 * 255));
+        Serial.print(" ");
+      }
+
+    }
+    if (preview)
+      Serial.write('\n');
+  }
+  avg = avg / (i_n * j_n);
+  float total_diff = 0;
+  /*
+    float filter[3][3] =
+    { {0.125, 0.125, 0.125},
+    {0.125, -1,  0.125},
+    {0.125, 0.125, 0.125}
+    };
+  */
+  float f = 1 / 24;
+  float filter[5][5] =
+  { {f, f, f, f, f},
+    {f, f, f, f, f},
+    {f, f, -1, f, f},
+    {f, f, f, f, f},
+    {f, f, f, f, f}
+  };
+
+  int filter_size = 5;
+  if (preview)
+    Serial.println("Filter sums:");
+  for (int i = 0; i < i_n - filter_size + 1; i++)
+  {
+    for (int j = 0; j < j_n - filter_size + 1; j++)
+    {
+      float filter_sum = 0;
+      for (int filter_i = 0; filter_i <  filter_size; filter_i++)
+      {
+        for (int filter_j = 0; filter_j <  filter_size; filter_j++)
+        {
+          filter_sum += reduced[i + filter_i][j + filter_j] * filter[filter_i][filter_j] ;
+          //total_diff += sq(reduced[i][j] - avg);
+        }
+      }
+      if (preview)
+      {
+        Serial.print(i_n * j_n * sq((filter_sum/ (4 * 255)) / (sq(filter_size))));
+        Serial.write(' ');
+      }
+      total_diff += sq((filter_sum/ (4 * 255)) / (sq(filter_size)));
+    }
+    if (preview)
+      Serial.println();
+  }
+  if (preview)
+  {
+    Serial.print("Avg: ");
+    Serial.println(avg);
+
+    Serial.print("Processing took:");
+    Serial.println(millis() - start);
+    start = millis();
+  }
+  //Serial.print(total_diff);
+
+  myCAM.clear_fifo_flag();
+
+
+
+  return total_diff;
+
+}
+

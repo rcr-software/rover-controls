@@ -144,7 +144,7 @@ void setup()
   /****************************************BLE Connect*******************************************************************/
   Serial.print(F("Pairing: "));
 
-  //loop until ble connects or retry limit of 6 is reached
+  //loop until ble connects or retry limit of 3 is reached
   int retries = 0;
   while (true)                //Attempt to connect to BLE device
   {
@@ -155,7 +155,7 @@ void setup()
       break;
     }
     //limit number of retries
-    if (retries++ > 6) {
+    if (retries++ > 3) {
       ble_connected = false;
       Serial.println(F("Failed ble connection"));
       break;
@@ -285,19 +285,21 @@ void rover_command(int buttNum, boolean pressed) {
         logData(buttNum, pressed, action);
       }
       break;
-    case 2:
+    case 2://image previews
       if (pressed)
       {
-        motor2->run(FORWARD);
-        Serial.println("Motor 2 Engaged...");
-        action = "Motor 2 Engaged";
+        Serial.println("image preview button");
+        float contrast = fifo_burst_contrast(myCAM, true);
+        Serial.println("contrast: ");
+        Serial.println(100*contrast);
+        action = "preview button pressed";
         logData(buttNum, pressed, action);
+
       }
       else
       {
-        motor2->run(RELEASE);
-        Serial.println("Motor 2 Disengaged...");
-        action = "Motor 2 Disengaged";
+        Serial.println("Button 2 unpressed");
+        action = "Button 2 Disengaged";
         logData(buttNum, pressed, action);
       }
       break;
@@ -307,7 +309,7 @@ void rover_command(int buttNum, boolean pressed) {
         Serial.println("Taking picture");
         DateTime now = rtc.now();
         int k = now.unixtime() - 1510471301;
-        k = k%1000;
+        k = k % 1000;
         bool success = capture(k); //from ArduCAM
         if (success) {
           Serial.print("Took picture #");
@@ -330,16 +332,23 @@ void rover_command(int buttNum, boolean pressed) {
     case 4:
       if (pressed)
       {
-        motor4->run(FORWARD);
-        Serial.println("Motor 4 Engaged...");
-        action = "Motor 4 Engaged";
+        Serial.println("Focus button");
+        Serial.println("contrast: ");
+        while (1)
+        {
+          float contrast = fifo_burst_contrast(myCAM, false);
+          Serial.println(100*contrast);
+            if (Serial.parseInt() == 4)
+              break;
+        }
+        action = "Focus button pressed";
         logData(buttNum, pressed, action);
+
       }
       else
       {
-        motor4->run(RELEASE);
-        Serial.println("Motor 4 Disengaged...");
-        action = "Motor 4 Disengaged";
+        Serial.println("Button 4 unpressed");
+        action = "Button 4 Disengaged";
         logData(buttNum, pressed, action);
       }
       break;
